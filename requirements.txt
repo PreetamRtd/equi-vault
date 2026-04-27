@@ -1,0 +1,18 @@
+# Backend API
+fastapi
+uvicorn
+python-multipart
+
+# Data Engineering & ML
+pandas
+numpy
+scikit-learn
+
+# Privacy & Fairness Libraries
+fairlearn
+tensorflow-privacy
+
+# Frontend UI & Visualization
+streamlit
+plotly
+requests
