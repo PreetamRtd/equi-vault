@@ -39,7 +39,7 @@ uploaded_file = st.sidebar.file_uploader("Upload Sensitive Dataset (CSV)", type=
 # Restored Domain Dropdown
 domain = st.sidebar.selectbox("Select Data Domain", ["Healthcare", "Finance", "Criminal Justice", "Custom"])
 
-BASE_API_URL = "http://127.0.0.1:8000" # Update this to Cloud Run URL for production
+BASE_API_URL = os.getenv("API_URL", "http://127.0.0.1:8000") # Production URL can be set via Streamlit Secrets
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
