@@ -10,7 +10,6 @@ scikit-learn
 
 # Privacy & Fairness Libraries
 fairlearn
-tensorflow-privacy
 
 # Frontend UI & Visualization
 streamlit
