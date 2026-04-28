@@ -66,6 +66,8 @@ if uploaded_file is not None:
                 st.session_state.phase1_results = response.json()
                 st.session_state.phase2_results = None 
                 st.success("Phase 1 Complete!")
+            else:
+                st.error(f"Backend Error (Status {response.status_code}): {response.text}")
 
     # ==========================================
     # RENDER PHASE 1 UI
