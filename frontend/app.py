@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 import json
 import os
-# --- FIXED IMPORT LINE (Added display_vulnerability_metrics) ---
 from components import plot_utility_metrics, plot_bias_metrics, plot_vulnerability, display_recommendation_card, display_vulnerability_metrics
 
 # --- Page Configuration ---
@@ -18,6 +17,46 @@ css_path = os.path.join(os.path.dirname(__file__), "assets", "custom_style.css")
 if os.path.exists(css_path):
     load_css(css_path)
 
+# --- NEW: Auto-Schema Scanner ---
+def auto_map_schema(columns):
+    """Scans column names and makes intelligent guesses for the schema mapping."""
+    target_keywords = ['income', 'result', 'status', 'class', 'label', 'target', 'disease']
+    protected_keywords = ['gender', 'sex', 'race', 'ethnicity']
+    qi_keywords = ['age', 'date', 'room', 'zip', 'education', 'marital', 'country', 'relationship', 'workclass']
+    sa_keywords = ['condition', 'billing', 'amount', 'medication', 'capital', 'salary', 'disease']
+
+    mapped = {"target": None, "protected": None, "qis": [], "sas": []}
+
+    # 1. Find Target
+    for col in columns:
+        if any(kw in col.lower() for kw in target_keywords):
+            mapped["target"] = col
+            break
+            
+    # 2. Find Protected Attribute
+    for col in columns:
+        if any(kw in col.lower() for kw in protected_keywords):
+            mapped["protected"] = col
+            break
+
+    # 3. Find QIs and SAs
+    for col in columns:
+        c_low = col.lower()
+        if col == mapped["target"] or col == mapped["protected"]:
+            continue
+            
+        if any(kw in c_low for kw in qi_keywords):
+            mapped["qis"].append(col)
+        elif any(kw in c_low for kw in sa_keywords):
+            mapped["sas"].append(col)
+
+    # Fallbacks if the scanner couldn't find a match
+    if not mapped["target"]: mapped["target"] = columns[-1] # Usually the last column is the target
+    if not mapped["protected"]: mapped["protected"] = columns[0]
+
+    return mapped
+
+# --- Main App ---
 st.title("🛡️ Equi-Vault: Privacy & Fairness Auditing Sandbox")
 st.markdown("Upload your sensitive tabular data to mathematically evaluate the tradeoff between Data Privacy, ML Utility, and Algorithmic Bias.")
 
@@ -36,18 +75,25 @@ if uploaded_file is not None:
     
     st.markdown("---")
     st.write("### ⚙️ Schema Mapping")
-    st.markdown("Tag your columns so the engine knows how to process the data.")
+    st.markdown("Tag your columns so the engine knows how to process the data. *Equi-Vault has auto-mapped these based on your column names.*")
+    
+    # --- Execute Auto-Scanner ---
+    auto_mapped = auto_map_schema(columns)
+    
+    # Find the numeric index of the target and protected columns for the dropdowns
+    target_idx = columns.index(auto_mapped["target"]) if auto_mapped["target"] in columns else 0
+    protected_idx = columns.index(auto_mapped["protected"]) if auto_mapped["protected"] in columns else 0
     
     # --- UI Layout for Mapping ---
     col1, col2 = st.columns(2)
     
     with col1:
-        target_col = st.selectbox("🎯 Target Variable (What the ML predicts)", columns)
-        protected_col = st.selectbox("⚖️ Protected Attribute (Audit for bias against this)", columns)
+        target_col = st.selectbox("🎯 Target Variable (What the ML predicts)", columns, index=target_idx)
+        protected_col = st.selectbox("⚖️ Protected Attribute (Audit for bias against this)", columns, index=protected_idx)
         
     with col2:
-        qi_cols = st.multiselect("🔍 Quasi-Identifiers (To be Generalized/Blurred)", columns)
-        sa_cols = st.multiselect("🔒 Sensitive Attributes (To be mathematically protected)", columns)
+        qi_cols = st.multiselect("🔍 Quasi-Identifiers (To be Generalized/Blurred)", columns, default=auto_mapped["qis"])
+        sa_cols = st.multiselect("🔒 Sensitive Attributes (To be mathematically protected)", columns, default=auto_mapped["sas"])
 
     st.markdown("---")
     
@@ -79,11 +125,11 @@ if uploaded_file is not None:
                         # --- Dashboard Rendering ---
                         display_recommendation_card(results.get("recommendation", ""))
                         
-                        # NEW: Explicit Metric Cards
+                        # Explicit Metric Cards
                         st.markdown("---")
                         display_vulnerability_metrics(results["vulnerability_analysis"])
                         
-                        # FIXED: Added the Donut Chart Back
+                        # Donut Chart
                         total_rows = results["dataset_info"]["total_rows"]
                         plot_vulnerability(results["vulnerability_analysis"], total_rows)
                         
@@ -94,7 +140,7 @@ if uploaded_file is not None:
                         with r_col2:
                             plot_bias_metrics(results["ml_audit"])
                             
-                        # --- NEW: Download & Iterative Recommendation ---
+                        # --- Download & Iterative Recommendation ---
                         st.markdown("---")
                         st.write("### 🛠️ Phase 2: Next Steps & Export")
                         
@@ -113,7 +159,6 @@ if uploaded_file is not None:
                             
                         with action_col2:
                             st.markdown("#### Continuous Privacy Optimization")
-                            # Dynamic hybrid recommendation based on the results
                             if results["vulnerability_analysis"]["homogeneity_attack"]["exposed_records"] > 0:
                                 st.warning("⚠️ **Vulnerability Detected:** Your k-anonymized data still has exposed records due to homogeneity.")
                                 st.markdown(f"**Recommendation:** Stack techniques. Apply **Differential Privacy** to the `{sa_cols[0] if sa_cols else 'Sensitive'}` column of your newly downloaded dataset to break the homogeneity without sacrificing demographic utility.")

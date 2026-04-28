@@ -7,7 +7,7 @@ import traceback
 # Import our custom engines and utilities
 from ml_auditor import run_audit
 from attack_simulation import simulate_homogeneity_attack, simulate_skewness_attack
-from utils import load_domain_rules, clean_json_types
+from utils import get_dynamic_rules, clean_json_types
 
 app = FastAPI(title="Equi-Vault API")
 
@@ -36,8 +36,8 @@ async def audit_dataset(
         # Determine numerical SAs for Differential Privacy
         num_sa_cols = [col for col in sa_list if pd.api.types.is_numeric_dtype(df[col])]
         
-        # 2. Load Rules
-        domain_rules = load_domain_rules(domain)
+        # 2. Load Dynamic Rules (Agnostic to any dataset)
+        domain_rules = get_dynamic_rules(df, qi_list)
         
         # 3. Run the Machine Learning Audit
         ml_results = run_audit(df, target_col, protected_col, qi_list, num_sa_cols, domain_rules)
@@ -50,11 +50,10 @@ async def audit_dataset(
         homogeneity_risk = simulate_homogeneity_attack(df_k_anon, qi_list, primary_sa)
         skewness_risk = simulate_skewness_attack(df_k_anon, qi_list, primary_sa)
         
-        # 5. The Recommendation Engine
-       # 5. The Recommendation Engine
+        # 5. The Recommendation Engine (Relative Threshold Logic)
         recommendation = "Baseline"
         
-        # Get the scores
+        # Get the scores safely
         baseline_f1 = ml_results.get("Baseline (Raw)", {}).get("F1_Score", 0)
         dp_f1 = ml_results.get("Differential Privacy", {}).get("F1_Score", 0)
         k_anon_f1 = ml_results.get("k-Anonymity", {}).get("F1_Score", 0)
@@ -69,16 +68,15 @@ async def audit_dataset(
         else:
             recommendation = "Differential Privacy optimally balances fairness, privacy, and utility for this dataset."
 
-        # --- NEW: Generate Downloadable CSV based on Recommendation ---
-        # 1. ALWAYS drop Direct Identifiers before exporting
+        # 6. Generate Downloadable CSV based on Recommendation
+        # ALWAYS drop Direct Identifiers before exporting
         safe_df = df.drop(columns=['Name', 'name', 'Patient ID', 'id'], errors='ignore')
 
-        # 2. Apply the winning technique to the safe dataframe
+        # Apply the winning technique to the safe dataframe
         if "Differential Privacy" in recommendation:
             from privacy_engine import apply_differential_privacy
             best_df = apply_differential_privacy(safe_df, num_sa_cols, epsilon=0.5)
         else:
-            from privacy_engine import apply_k_anonymity
             best_df = apply_k_anonymity(safe_df, qi_list, domain_rules, k=5)
             
         # Convert the dataframe to a CSV string
@@ -86,7 +84,7 @@ async def audit_dataset(
         best_df.to_csv(csv_buffer, index=False)
         csv_string = csv_buffer.getvalue()
 
-        # 6. Package Data
+        # 7. Package Data
         response_payload = {
             "dataset_info": {
                 "filename": file.filename,
@@ -99,10 +97,10 @@ async def audit_dataset(
                 "skewness_attack": skewness_risk
             },
             "recommendation": recommendation,
-            "downloadable_csv": csv_string # <--- Added this line
+            "downloadable_csv": csv_string
         }
         
-        # 7. SANITIZE AND RETURN (This fixes the 500 error!)
+        # 8. SANITIZE AND RETURN 
         cleaned_payload = clean_json_types(response_payload)
         return JSONResponse(content=cleaned_payload)
         

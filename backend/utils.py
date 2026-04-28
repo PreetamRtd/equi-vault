@@ -1,12 +1,10 @@
 import numpy as np
 import json
 import os
+import pandas as pd
 
 def clean_json_types(obj):
-    """
-    Recursively converts Numpy data types to standard Python types.
-    Prevents FastAPI from crashing with 'Object of type int64 is not JSON serializable'.
-    """
+    """Prevents FastAPI from crashing with Numpy JSON errors."""
     if isinstance(obj, np.integer):
         return int(obj)
     elif isinstance(obj, np.floating):
@@ -19,22 +17,35 @@ def clean_json_types(obj):
         return [clean_json_types(i) for i in obj]
     return obj
 
-def load_domain_rules(domain: str):
-    """Loads the specific JSON generalization hierarchies based on the chosen domain."""
-    filename = f"{domain.lower()}_rules.json"
-    filepath = os.path.join("rules", filename)
-    
-    # Fallback mock rules for local testing if the file isn't created yet
-    if not os.path.exists(filepath):
-        if domain.lower() == "healthcare":
-            return {
-                "Age": {"type": "binning", "bins": [0,20,40,60,80,120], "labels": ["0-20","21-40","41-60","61-80","80+"]},
-                "Date of Admission": {"type": "date_year_only"},
-                "Discharge Date": {"type": "date_year_only"},
-                "Hospital": {"type": "suppress"},
-                "Room Number": {"type": "suppress"}
+def get_dynamic_rules(df, qi_cols):
+    """
+    Dynamically generates masking rules for ANY dataset.
+    No hardcoded JSON files needed anymore!
+    """
+    rules = {}
+    for col in qi_cols:
+        if col not in df.columns:
+            continue
+            
+        # If the column is numbers (like Age or Income), automatically bin it into 5 groups
+        if pd.api.types.is_numeric_dtype(df[col]):
+            min_val = float(df[col].min())
+            max_val = float(df[col].max())
+            
+            # Create mathematical bins
+            bins = np.linspace(min_val, max_val, 6).tolist()
+            bins[0] = -float('inf') # Catch outliers below
+            bins[-1] = float('inf') # Catch outliers above
+            
+            labels = [f"Group {i+1}" for i in range(5)]
+            
+            rules[col] = {
+                "type": "binning",
+                "bins": bins,
+                "labels": labels
             }
-        return {}
-        
-    with open(filepath, 'r') as f:
-        return json.load(f)
+        else:
+            # If the column is text (like Occupation or Zip Code), suppress it
+            rules[col] = {"type": "suppress"}
+            
+    return rules
