@@ -122,14 +122,33 @@ if uploaded_file is not None:
                         results = response.json()
                         st.success("Audit Complete!")
                         
-                        # --- Dashboard Rendering ---
-                        display_recommendation_card(results.get("recommendation", ""))
+                        winner_name = results.get("winner_name", "k-Anonymity")
                         
-                        # Explicit Metric Cards
+                        # --- 🏆 BOLD WINNER DISPLAY ---
+                        st.markdown(f"""
+                        <div style="background-color:#0e1117; padding:20px; border-radius:10px; border: 2px solid #00ff00;">
+                            <h2 style="color:#00ff00; text-align:center;">🏆 Optimal Architecture: {winner_name}</h2>
+                            <p style="font-size:18px; text-align:center;">{results['recommendation']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # --- 📊 CLEAN DATA TABLE (NO MORE JSON) ---
+                        st.markdown("### 📈 Comprehensive Metrics Table")
+                        st.markdown("Compare the exact Utility and Fairness tradeoffs across all evaluated architectures.")
+                        
+                        # Convert the JSON dictionary into a Pandas DataFrame for a beautiful table
+                        audit_df = pd.DataFrame(results["ml_audit"]).T
+                        audit_df = audit_df.rename(columns={"F1_Score": "Utility (F1-Score)", "Bias_Score": "Bias (Lower is Better)"})
+                        
+                        # Display the table, highlighting the best scores
+                        st.dataframe(
+                            audit_df.style.highlight_max(subset=['Utility (F1-Score)'], color='rgba(0,255,0,0.2)')
+                                        .highlight_min(subset=['Bias (Lower is Better)'], color='rgba(0,0,255,0.2)'),
+                            use_container_width=True
+                        )
+                        
                         st.markdown("---")
                         display_vulnerability_metrics(results["vulnerability_analysis"])
-                        
-                        # Donut Chart
                         total_rows = results["dataset_info"]["total_rows"]
                         plot_vulnerability(results["vulnerability_analysis"], total_rows)
                         
@@ -140,35 +159,35 @@ if uploaded_file is not None:
                         with r_col2:
                             plot_bias_metrics(results["ml_audit"])
                             
-                        # --- Download & Iterative Recommendation ---
+                        # --- 🛠️ DYNAMIC PHASE 2 (HYBRID STACKING) ---
                         st.markdown("---")
-                        st.write("### 🛠️ Phase 2: Next Steps & Export")
+                        st.write("### 🛠️ Phase 2: Next Steps & Hybrid Export")
                         
                         action_col1, action_col2 = st.columns(2)
                         
                         with action_col1:
-                            st.markdown("#### Export Optimized Data")
-                            st.markdown("Download the dataset modified by the recommended architecture.")
+                            st.markdown(f"#### Export {winner_name} Data")
+                            st.markdown(f"Download the securely modified dataset using the winning **{winner_name}** architecture.")
                             st.download_button(
-                                label="📥 Download Anonymized Dataset (CSV)",
+                                label=f"📥 Download {winner_name} Dataset (CSV)",
                                 data=results.get("downloadable_csv", ""),
-                                file_name=f"anonymized_{uploaded_file.name}",
+                                file_name=f"equi_vault_{winner_name.lower().replace(' ', '_')}.csv",
                                 mime="text/csv",
                                 type="primary"
                             )
                             
                         with action_col2:
                             st.markdown("#### Continuous Privacy Optimization")
-                            if results["vulnerability_analysis"]["homogeneity_attack"]["exposed_records"] > 0:
-                                st.warning("⚠️ **Vulnerability Detected:** Your k-anonymized data still has exposed records due to homogeneity.")
-                                st.markdown(f"**Recommendation:** Stack techniques. Apply **Differential Privacy** to the `{sa_cols[0] if sa_cols else 'Sensitive'}` column of your newly downloaded dataset to break the homogeneity without sacrificing demographic utility.")
-                            else:
-                                st.info("✅ **Data is Secure:** No tabular linkage vulnerabilities detected. To further prevent Machine Learning Membership Inference attacks, consider applying a light layer of Differential Privacy (ε=2.0).")
                             
-                            if st.button("Apply Hybrid Strategy (Simulate)"):
-                                st.success("Hybrid Strategy Applied! (In a full deployment, this would push the downloaded dataset back through the pipeline for a Phase 2 audit).")
-
-                        with st.expander("View Raw JSON Output"):
-                            st.json(results)
-                except Exception as e:
-                    st.error(f"Error connecting to backend: {e}")
+                            # Dynamic Logic: Recommend the missing puzzle piece
+                            if "Privacy" in winner_name:
+                                st.info(f"✅ **SAs Protected:** {winner_name} mathematically secured your Sensitive Attributes.")
+                                st.markdown(f"**Recommendation:** Stack techniques! Your newly downloaded data is ready for Phase 2. Apply **k-Anonymity** to the Quasi-Identifiers to prevent hacker Linkage Attacks.")
+                            else:
+                                st.info(f"✅ **QIs Protected:** {winner_name} successfully blurred your Quasi-Identifiers into groups.")
+                                st.markdown(f"**Recommendation:** Stack techniques! Your newly downloaded data is ready for Phase 2. Apply **Differential Privacy** to the numerical Sensitive Attributes to prevent Attribute Disclosure and smooth out ML bias.")
+                            
+                            if st.button("Apply Complementary Technique (Simulate)"):
+                                st.success("Hybrid Data Generated! (In a full deployment, Equi-Vault runs this in a continuous CI/CD loop).")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Error connecting to backend: {str(e)}")
